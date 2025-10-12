@@ -112,4 +112,5 @@
   /* Capability css-animation is prefixed with -webkit because 57.87258145% of users need it which is more than the threshold of 0.1%. */
   /* Creating new -webkit context. */
   -webkit-animation: foo 1s;
+  animation: foo 1s; }
 
