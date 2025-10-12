@@ -1,5 +1,5 @@
 # Require any additional compass plugins here.
-require 'true'
+require 'true'  # Re-enabled with version 2.2.2
 require 'compass/import-once/activate'
 project_type = :stand_alone
 css_dir = "tmp"

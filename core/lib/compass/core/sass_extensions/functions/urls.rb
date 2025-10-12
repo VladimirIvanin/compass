@@ -2,7 +2,9 @@ module Compass::Core::SassExtensions::Functions::Urls
 
 
   def self.has?(base, instance_method)
-    Sass::Util.has?(:instance_method, base, instance_method)
+    # Sass::Util.has? was removed in Sass 3.7
+    # Use respond_to? directly instead
+    base.method_defined?(instance_method)
   end
 
   def self.included(base)

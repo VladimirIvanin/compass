@@ -5,7 +5,7 @@ $:.unshift(test_dir) unless $:.include?(test_dir)
 
 require 'compass'
 require 'test/unit'
-require 'true'
+require 'true'  # Re-enabled with version 2.2.2
 
 
 class String
