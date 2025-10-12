@@ -87,7 +87,9 @@ module Compass::Core::SassExtensions::Functions::Configuration
   OPTION_TRANSFORMER[:asset_cache_buster] = proc do |v, ctx|
     proc do |url, file|
       if ctx.environment.function(v.value) || Sass::Script::Functions.callable?(v.value.tr('-', '_'))
-        result = ctx.call(v, ctx.quoted_string(url),
+        # Sass 3.5+: Use get_function() instead of passing string to call()
+        fn = ctx.get_function(v)
+        result = ctx.call(fn, ctx.quoted_string(url),
                              file.nil? ? ctx.null() : ctx.quoted_string(file.path))
         case result
         when Sass::Script::Value::String, Sass::Script::Value::Null
@@ -111,7 +113,9 @@ module Compass::Core::SassExtensions::Functions::Configuration
   OPTION_TRANSFORMER[:asset_host] = proc do |v, ctx|
     proc do |file|
       if ctx.environment.function(v.value) || Sass::Script::Functions.callable?(v.value.tr('-', '_'))
-        result = ctx.call(v, ctx.quoted_string(file))
+        # Sass 3.5+: Use get_function() instead of passing string to call()
+        fn = ctx.get_function(v)
+        result = ctx.call(fn, ctx.quoted_string(file))
         case result
         when Sass::Script::Value::String, Sass::Script::Value::Null
           result.value

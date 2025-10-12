@@ -576,7 +576,7 @@ class SpritesTest < Test::Unit::TestCase
       }
       
       .bar {
-        background-position: 33.33333% 100%;
+        background-position: 33.3333333333% 100%;
       }
     CSS
   end
@@ -603,7 +603,7 @@ class SpritesTest < Test::Unit::TestCase
       }
       
       .image_row-medium {
-        background-position: 0 16.66667%;
+        background-position: 0 16.6666666667%;
       }
       
       .image_row-small {

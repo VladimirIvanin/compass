@@ -75,10 +75,10 @@ class SassExtensionsTest < Test::Unit::TestCase
   end
 
   def test_math_functions
-    assert_equal "0.84147", evaluate("sin(1)")
-    assert_equal "0.84147px", evaluate("sin(1px)")
-    assert_equal "0.5236", evaluate("asin(0.5)")
-    assert_equal "0.5236", evaluate("asin(100px/200px)")
+    assert_equal "0.8414709848", evaluate("sin(1)")
+    assert_equal "0.8414709848px", evaluate("sin(1px)")
+    assert_equal "0.5235987756", evaluate("asin(0.5)")
+    assert_equal "0.5235987756", evaluate("asin(100px/200px)")
     assert_equal "0.0", evaluate("sin(pi())")
     assert_equal "1",   evaluate("sin(pi() / 2)")
     assert_equal "0.0",   evaluate("sin(180deg)")
