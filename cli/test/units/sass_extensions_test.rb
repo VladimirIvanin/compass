@@ -97,7 +97,7 @@ class SassExtensionsTest < Test::Unit::TestCase
     assert_equal "0.9589157234", evaluate("sin(360)")
     assert evaluate("tan(pi()/2 - 0.0001)").to_f > 1000, evaluate("tan(pi()/2 - 0.0001)")
     assert evaluate("tan(pi()/2 + 0.0001)").to_f < -1000, evaluate("tan(pi()/2 - 0.0001)")
-    assert_equal "0.69315px", evaluate("logarithm(2px)")
+    assert_equal "0.6931471806px", evaluate("logarithm(2px)")
     assert_equal "0", evaluate("logarithm(1)")
     assert_equal "1", evaluate("logarithm(e())")
     assert_equal "1", evaluate("logarithm($number: e())")
@@ -108,7 +108,7 @@ class SassExtensionsTest < Test::Unit::TestCase
     assert_equal "5px", evaluate("square-root($number: 25px)")
     assert_equal "25px", evaluate("pow(5px, 2)")
     assert_equal "25px", evaluate("pow($number: 5px, $exponent: 2)")
-    assert_equal "79.43236px", evaluate("pow(5px, e())")
+    assert_equal "79.4323591662px", evaluate("pow(5px, e())")
     assert((0..2).include?(evaluate("random(2)").to_i))
     random_warning = capture_warning do
       assert((4..16).include?(evaluate("random(4, 16)").to_i))
