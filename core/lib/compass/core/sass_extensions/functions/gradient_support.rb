@@ -145,14 +145,19 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
 
   class ColorStop < Sass::Script::Value::Base
     include Sass::Script::Value::Helpers
-    attr_accessor :color, :stop
-    def children
-      [color, stop].compact
+    attr_accessor :color, :stop, :stop2
+    # Rightmost stop position (for CSS color hint / double-position syntax).
+    def outer_stop
+      stop2 || stop
     end
-    def initialize(color, stop = nil)
+    def children
+      [color, stop, stop2].compact
+    end
+    def initialize(color, stop = nil, stop2 = nil)
       assert_legal_color! color
       assert_legal_color_stop! stop if stop
-      self.color, self.stop = color, stop
+      assert_legal_color_stop! stop2 if stop2
+      self.color, self.stop, self.stop2 = color, stop, stop2
     end
     def inspect
       to_s
@@ -212,10 +217,10 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
       s = self.class.color_to_s(color)
       if stop
         s << " "
-        if stop.respond_to?(:unitless?) && stop.unitless?
-          s << stop.times(number(100, "%")).inspect
-        else
-          s << stop.to_s
+        s << format_stop_for_css(stop)
+        if stop2
+          s << " "
+          s << format_stop_for_css(stop2)
         end
       end
       s
@@ -223,6 +228,16 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
 
     def to_sass(options = nil)
       identifier("color-stop(#{color.to_sass rescue nil}, #{stop.to_sass rescue nil})")
+    end
+
+    private
+
+    def format_stop_for_css(stop)
+      if stop.respond_to?(:unitless?) && stop.unitless?
+        stop.times(number(100, "%")).inspect
+      else
+        stop.to_s
+      end
     end
   end
 
@@ -427,7 +442,10 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
       # I don't know how to support degree-based gradients in old webkit gradients (owg) or svg so we just disable them.
       if %w(owg).include?(aspect) && position_or_angle.is_a?(Sass::Script::Value::Number) && position_or_angle.numerator_units.include?("deg")
         false
-      elsif %w(owg svg).include?(aspect) && color_stops.value.any?{|cs| cs.stop.is_a?(Sass::Script::Value::String) }
+      elsif %w(owg svg).include?(aspect) && color_stops.value.any?{|cs|
+            cs.stop.is_a?(Sass::Script::Value::String) ||
+              (cs.stop2 && cs.stop2.is_a?(Sass::Script::Value::String))
+          }
         # calc expressions cannot be represented in svg or owg
         false
       else
@@ -442,7 +460,7 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
       start_point = grad_point(position_list)
       args = []
       args << start_point
-      args << linear_end_position(position_list, start_point, color_stops.value.last.stop)
+      args << linear_end_position(position_list, start_point, color_stops.value.last.outer_stop)
       args << grad_color_stops(color_stops)
       args.each{|a| a.options = options}
       Sass::Script::String.new("-webkit-gradient(linear, #{args.join(', ')})")
@@ -546,7 +564,7 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
         elsif Sass::Script::Value::Color === arg
           ColorStop.new(arg)
         elsif Sass::Script::Value::List === arg
-          ColorStop.new(*arg.value)
+          color_stop_from_list(arg)
         elsif Sass::Script::Value::String === arg && arg.value == "transparent"
           ColorStop.new(arg)
         elsif Sass::Script::Value::String === arg && arg.value == "currentColor"
@@ -630,19 +648,29 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
     def color_stops_in_percentages(color_list)
       assert_type color_list, :List
       color_list = normalize_stops(color_list)
-      max = color_list.value.last.stop
+      last_cs = color_list.value.last
+      max = last_cs.outer_stop
       last_value = nil
-      color_list.value.map do |pos|
-        next [pos.stop, pos.color] if pos.stop.is_a?(Sass::Script::Value::String)
+      pairs = color_list.value.flat_map do |pos|
+        if pos.stop2
+          [[pos.stop, pos.color], [pos.stop2, pos.color]]
+        else
+          [[pos.stop, pos.color]]
+        end
+      end
+      pairs.map do |stop, color|
+        next [stop, color] if stop.is_a?(Sass::Script::Value::String)
         # have to convert absolute units to percentages for use in color stop functions.
-        stop = pos.stop
-        stop = stop.div(max).times(number(100, "%")) if stop.numerator_units == max.numerator_units && max.numerator_units != ["%"]
+        if max.is_a?(Sass::Script::Value::Number) &&
+            stop.numerator_units == max.numerator_units && max.numerator_units != ["%"]
+          stop = stop.div(max).times(number(100, "%"))
+        end
         # Make sure the color stops are specified in the right order.
         if last_value && stop.numerator_units == last_value.numerator_units && stop.denominator_units == last_value.denominator_units && (stop.value * 1000).round < (last_value.value * 1000).round
           raise Sass::SyntaxError.new("Color stops must be specified in increasing order. #{stop.value} came after #{last_value.value}.")
         end
         last_value = stop
-        [stop, pos.color]
+        [stop, color]
       end
     end
 
@@ -678,7 +706,8 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
 
     def grad_position(color_list, index, default, radial = bool(false))
       assert_type color_list, :List
-      stop = color_list.value[index.value - 1].stop
+      # Use outermost position so double-position stops (e.g. transparent 0 25%) extend the radial correctly.
+      stop = color_list.value[index.value - 1].outer_stop
       if stop && radial.to_bool
         orig_stop = stop
         if stop.unitless?
@@ -690,8 +719,9 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
             stop = stop.times(number(1, "px"))
           end
         end
-        if stop.numerator_units == ["%"] && color_list.value.last.stop && color_list.value.last.stop.numerator_units == ["px"]
-          stop = stop.times(color_list.value.last.stop).div(number(100, "%"))
+        last_outer = color_list.value.last.outer_stop
+        if stop.numerator_units == ["%"] && last_outer && last_outer.numerator_units == ["px"]
+          stop = stop.times(last_outer).div(number(100, "%"))
         end
         Compass::Logger.new.record(:warning, "Webkit only supports pixels for the start and end stops for radial gradients. Got: #{orig_stop}") if stop.numerator_units != ["px"]
         stop.div(Sass::Script::Value::Number.new(1, stop.numerator_units, stop.denominator_units))
@@ -723,10 +753,34 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
 
     def color_stop?(arg)
       arg.is_a?(ColorStop) ||
-      (arg.is_a?(Sass::Script::Value::List) && ColorStop.new(*arg.value)) ||
+      (arg.is_a?(Sass::Script::Value::List) && color_stop_from_list(arg)) ||
       ColorStop.new(arg)
     rescue
       nil
+    end
+
+    # True for values that may appear as gradient stop positions in Sass lists.
+    def legal_color_stop?(stop)
+      return false unless stop
+      case stop
+      when Sass::Script::Value::String
+        stop.value.start_with?("calc(")
+      when Sass::Script::Value::Number
+        true
+      else
+        false
+      end
+    end
+
+    # Parses a space- or comma-separated stop list; supports CSS Color Module 4
+    # double-position stops, e.g. (transparent 0 25%).
+    def color_stop_from_list(list)
+      v = list.value
+      if v.size == 3 && legal_color_stop?(v[1]) && legal_color_stop?(v[2])
+        ColorStop.new(v[0], v[1], v[2])
+      else
+        ColorStop.new(*v)
+      end
     end
 
     def normalize_stops(color_list)
@@ -750,18 +804,23 @@ module Compass::Core::SassExtensions::Functions::GradientSupport
       end
       # normalize unitless numbers
       positions.each do |pos|
-        next pos if pos.stop.is_a?(Sass::Script::Value::String)
-        if pos.stop.unitless? && pos.stop.value <= 1
-          pos.stop = pos.stop.times(number(100, "%"))
-        elsif pos.stop.unitless?
-          pos.stop = pos.stop.times(number(1, "px"))
+        [:stop, :stop2].each do |attr|
+          st = pos.send(attr)
+          next unless st
+          next if st.is_a?(Sass::Script::Value::String)
+          if st.unitless? && st.value <= 1
+            pos.send("#{attr}=", st.times(number(100, "%")))
+          elsif st.unitless?
+            pos.send("#{attr}=", st.times(number(1, "px")))
+          end
         end
       end
-      if (positions.last.stop.eq(number(0, "px")).to_bool ||
-         positions.last.stop.eq(number(0, "%")).to_bool)
-         raise Sass::SyntaxError.new("Color stops must be specified in increasing order")
-       end
-       opts(list(positions, color_list.separator))
+      last_outer = positions.last.outer_stop
+      if (last_outer.eq(number(0, "px")).to_bool ||
+          last_outer.eq(number(0, "%")).to_bool)
+        raise Sass::SyntaxError.new("Color stops must be specified in increasing order")
+      end
+      opts(list(positions, color_list.separator))
     end
 
     def parse_color_stop(arg)
